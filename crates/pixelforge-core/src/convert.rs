@@ -29,24 +29,15 @@ pub fn encode_image(image: &DynamicImage, target_format: &str, quality: u8) -> R
                 .encode_image(image)
                 .map_err(|error| JsError::new(&format!("JPEG encode error: {error}")))?;
         }
-        "png" => {
-            let encoder = image::codecs::png::PngEncoder::new(&mut output);
-            image
-                .write_with_encoder(encoder)
-                .map_err(|error| JsError::new(&format!("PNG encode error: {error}")))?;
-        }
-        "webp" => {
-            let encoder = image::codecs::webp::WebPEncoder::new_lossless(&mut output);
-            image
-                .write_with_encoder(encoder)
-                .map_err(|error| JsError::new(&format!("WebP encode error: {error}")))?;
-        }
-        "gif" | "bmp" | "tiff" | "tif" => {
+        "png" | "webp" | "gif" | "bmp" | "tiff" | "tif" => {
             let format = match target_format.to_ascii_lowercase().as_str() {
+                "png" => ImageFormat::Png,
+                "webp" => ImageFormat::WebP,
                 "gif" => ImageFormat::Gif,
                 "bmp" => ImageFormat::Bmp,
                 _ => ImageFormat::Tiff,
             };
+
             image
                 .write_to(&mut output, format)
                 .map_err(|error| JsError::new(&format!("Encode error: {error}")))?;
