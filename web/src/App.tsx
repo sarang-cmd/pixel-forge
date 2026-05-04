@@ -91,6 +91,8 @@ export default function App() {
                 <ImageViewer
                   image={activeImage}
                   onRotate={(degrees) => processor.rotate(activeImage.id, degrees)}
+                  onFlipHorizontal={() => processor.flip(activeImage.id, true)}
+                  onFlipVertical={() => processor.flip(activeImage.id, false)}
                 />
               ) : null}
             </section>
@@ -100,6 +102,7 @@ export default function App() {
                 options={processor.options}
                 onChange={processor.setOptions}
                 onConvert={() => activeImage && processor.convertSingle(activeImage.id)}
+                onDownload={() => activeImage && processor.downloadImage(activeImage.id)}
                 image={activeImage}
               />
               {activeImage?.metadata ? <MetadataPanel metadata={activeImage.metadata} /> : null}

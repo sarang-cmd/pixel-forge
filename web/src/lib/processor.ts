@@ -1,4 +1,4 @@
-import { decodeHeif, getHeifAvailabilityError, initHeif, isHeifFile } from './heif';
+import { decodeHeif, initHeif, isHeifFile } from './heif';
 
 export interface ProcessedImage {
   data: Uint8Array;
@@ -58,7 +58,7 @@ async function loadImageBitmapFromBytes(data: Uint8Array, type: string): Promise
 }
 
 async function decodeSource(imageData: Uint8Array, sourceFormat: string): Promise<ImageSource> {
-  if (sourceFormat === 'heic' || sourceFormat === 'heif' || sourceFormat === 'avif') {
+  if (sourceFormat === 'heic' || sourceFormat === 'heif') {
     const decoded = await decodeHeif(toArrayBuffer(imageData));
     const canvas = document.createElement('canvas');
     canvas.width = decoded.width;
@@ -209,7 +209,7 @@ export async function loadImageFile(file: File): Promise<{ data: Uint8Array; for
 }
 
 export async function getImageMetadata(imageData: Uint8Array, format: string): Promise<ImageMetadata> {
-  if (format === 'heic' || format === 'heif' || format === 'avif') {
+  if (format === 'heic' || format === 'heif') {
     const decoded = await decodeHeif(toArrayBuffer(imageData));
     return {
       format,
