@@ -78,7 +78,25 @@ export function useImageProcessor() {
 
   const convertSingle = useCallback(async (imageId: string) => {
     setImages((current) =>
-      current.map((image) => (image.id === imageId ? { ...image, status: 'done', converted: image.converted ?? { data: image.data, format: options.targetFormat, width: 0, height: 0 } } : image))
+      current.map((image) => {
+        if (image.id !== imageId) {
+          return image;
+        }
+
+        const converted = {
+          data: image.data,
+          format: options.targetFormat,
+          width: 0,
+          height: 0,
+        } satisfies ProcessedImage;
+
+        return {
+          ...image,
+          status: 'done' as const,
+          converted,
+          convertedUrl: URL.createObjectURL(new Blob([image.data], { type: `image/${options.targetFormat}` })),
+        };
+      })
     );
   }, [options.targetFormat]);
 
@@ -97,6 +115,11 @@ export function useImageProcessor() {
 
   const clearAll = useCallback(() => {
     images.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+    images.forEach((image) => {
+      if (image.convertedUrl) {
+        URL.revokeObjectURL(image.convertedUrl);
+      }
+    });
     setImages([]);
     setActiveIndex(0);
   }, [images]);

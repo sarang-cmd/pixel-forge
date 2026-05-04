@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { DownloadCloud, Layers3 } from 'lucide-react';
+import { saveAs } from 'file-saver';
 import type { ImageFile } from '../hooks/useImageProcessor';
 
 interface BatchPanelProps {
@@ -33,7 +34,8 @@ export default function BatchPanel({ images, onConvertAll }: BatchPanelProps) {
               zip.file(`${image.name.replace(/\.[^.]+$/, '')}.${image.converted.format}`, image.converted.data);
             }
           }
-          await zip.generateAsync({ type: 'blob' });
+          const blob = await zip.generateAsync({ type: 'blob' });
+          saveAs(blob, 'pixelforge-export.zip');
         }}
       >
         <DownloadCloud size={16} style={{ verticalAlign: 'text-bottom', marginRight: 6 }} />
