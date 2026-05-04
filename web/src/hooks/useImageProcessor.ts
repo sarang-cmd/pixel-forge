@@ -1,17 +1,16 @@
 import { useCallback, useState } from 'react';
+import {
+  convertImage,
+  flipImage,
+  getImageMetadata,
+  loadImageFile,
+  rotateImage,
+  type ConversionOptions as ProcessorConversionOptions,
+  type ProcessedImage as ProcessorProcessedImage,
+} from '../lib/processor';
 
-export interface ConversionOptions {
-  targetFormat: string;
-  quality: number;
-  maintainAspect: boolean;
-}
-
-export interface ProcessedImage {
-  data: Uint8Array;
-  format: string;
-  width: number;
-  height: number;
-}
+export type ConversionOptions = ProcessorConversionOptions;
+export type ProcessedImage = ProcessorProcessedImage;
 
 export interface ImageFile {
   id: string;
@@ -28,12 +27,6 @@ export interface ImageFile {
   error?: string;
 }
 
-const demoImageUrl =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"><defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#66a3ff"/><stop offset="1" stop-color="#88f0c2"/></linearGradient></defs><rect width="800" height="500" rx="36" fill="#11131a"/><circle cx="635" cy="118" r="92" fill="url(#g)" opacity="0.88"/><path d="M72 410l164-171 98 102 108-118 286 187H72z" fill="url(#g)" opacity="0.9"/><text x="72" y="82" fill="#f2f4ff" font-family="Inter, sans-serif" font-size="42" font-weight="700">Pixelforge Demo</text></svg>'
-  );
-
 export function useImageProcessor() {
   const [images, setImages] = useState<ImageFile[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -41,25 +34,27 @@ export function useImageProcessor() {
     targetFormat: 'jpeg',
     quality: 85,
     maintainAspect: true,
+    resizeMode: 'none',
+    targetWidth: 1920,
+    targetHeight: 1080,
+    scalePercent: 100,
   });
 
   const addFiles = useCallback(async (files: FileList | File[]) => {
     const entries = await Promise.all(
       Array.from(files).map(async (file) => {
-        const data = new Uint8Array(await file.arrayBuffer());
+        const { data, format } = await loadImageFile(file);
+        const metadata = await getImageMetadata(data, format).catch(() => undefined);
+
         return {
           id: `${file.name}-${file.size}-${file.lastModified}`,
           file,
           name: file.name,
           data,
-          format: file.name.split('.').pop()?.toLowerCase() || 'unknown',
+          format,
           size: formatBytes(file.size),
           previewUrl: URL.createObjectURL(file),
-          metadata: {
-            format: file.type || 'unknown',
-            width: 'local preview',
-            height: 'local preview',
-          },
+          metadata,
           status: 'idle' as const,
         };
       })
@@ -70,35 +65,86 @@ export function useImageProcessor() {
   }, []);
 
   const addDemoFile = useCallback(async () => {
-    const response = await fetch(demoImageUrl);
-    const blob = await response.blob();
-    const file = new File([blob], 'pixelforge-demo.svg', { type: 'image/svg+xml' });
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 720;
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      return;
+    }
+
+    const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#66a3ff');
+    gradient.addColorStop(1, '#88f0c2');
+    context.fillStyle = '#12141b';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = gradient;
+    context.fillRect(80, 100, 1120, 480);
+    context.fillStyle = '#0b0c10';
+    context.font = '700 64px Inter, sans-serif';
+    context.fillText('Pixelforge Demo', 120, 220);
+    context.font = '400 32px Inter, sans-serif';
+    context.fillText('Browser-native processing preview', 120, 280);
+
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) {
+      return;
+    }
+
+    const file = new File([blob], `pixelforge-demo-${Date.now()}.png`, { type: 'image/png' });
     await addFiles([file]);
   }, [addFiles]);
 
   const convertSingle = useCallback(async (imageId: string) => {
+    const source = images.find((image) => image.id === imageId);
+    if (!source) {
+      return;
+    }
+
     setImages((current) =>
-      current.map((image) => {
-        if (image.id !== imageId) {
-          return image;
-        }
-
-        const converted = {
-          data: image.data,
-          format: options.targetFormat,
-          width: 0,
-          height: 0,
-        } satisfies ProcessedImage;
-
-        return {
-          ...image,
-          status: 'done' as const,
-          converted,
-          convertedUrl: URL.createObjectURL(new Blob([image.data], { type: `image/${options.targetFormat}` })),
-        };
-      })
+      current.map((image) => (image.id === imageId ? { ...image, status: 'converting' as const, error: undefined } : image))
     );
-  }, [options.targetFormat]);
+
+    try {
+      const converted = await convertImage(source.data, source.format, options);
+      const convertedUrl = URL.createObjectURL(new Blob([converted.data], { type: mimeFromFormat(converted.format) }));
+      const metadata = await getImageMetadata(converted.data, converted.format).catch(() => source.metadata);
+
+      setImages((current) =>
+        current.map((image) => {
+          if (image.id !== imageId) {
+            return image;
+          }
+
+          if (image.convertedUrl) {
+            URL.revokeObjectURL(image.convertedUrl);
+          }
+
+          return {
+            ...image,
+            converted,
+            convertedUrl,
+            metadata,
+            status: 'done' as const,
+            error: undefined,
+          };
+        })
+      );
+    } catch (error) {
+      setImages((current) =>
+        current.map((image) =>
+          image.id === imageId
+            ? {
+                ...image,
+                status: 'error' as const,
+                error: error instanceof Error ? error.message : 'Failed to convert image',
+              }
+            : image
+        )
+      );
+    }
+  }, [images, options]);
 
   const convertAll = useCallback(async () => {
     for (const image of images) {
@@ -107,11 +153,126 @@ export function useImageProcessor() {
   }, [convertSingle, images]);
 
   const rotate = useCallback(async (imageId: string, degrees: number) => {
-    void degrees;
+    const source = images.find((image) => image.id === imageId);
+    if (!source) {
+      return;
+    }
+
     setImages((current) =>
-      current.map((image) => (image.id === imageId ? { ...image, status: 'done' } : image))
+      current.map((image) => (image.id === imageId ? { ...image, status: 'converting' as const, error: undefined } : image))
     );
-  }, []);
+
+    try {
+      const rotated = await rotateImage(source.data, source.format, degrees, options.targetFormat, options.quality);
+      const blob = new Blob([rotated.data], { type: mimeFromFormat(rotated.format) });
+      const nextPreviewUrl = URL.createObjectURL(blob);
+      const metadata = await getImageMetadata(rotated.data, rotated.format).catch(() => source.metadata);
+
+      setImages((current) =>
+        current.map((image) => {
+          if (image.id !== imageId) {
+            return image;
+          }
+
+          URL.revokeObjectURL(image.previewUrl);
+          if (image.convertedUrl) {
+            URL.revokeObjectURL(image.convertedUrl);
+          }
+
+          return {
+            ...image,
+            data: rotated.data,
+            format: rotated.format,
+            previewUrl: nextPreviewUrl,
+            converted: rotated,
+            convertedUrl: nextPreviewUrl,
+            metadata,
+            status: 'done' as const,
+            error: undefined,
+          };
+        })
+      );
+    } catch (error) {
+      setImages((current) =>
+        current.map((image) =>
+          image.id === imageId
+            ? {
+                ...image,
+                status: 'error' as const,
+                error: error instanceof Error ? error.message : 'Failed to rotate image',
+              }
+            : image
+        )
+      );
+    }
+  }, [images, options.quality, options.targetFormat]);
+
+  const flip = useCallback(async (imageId: string, horizontal: boolean) => {
+    const source = images.find((image) => image.id === imageId);
+    if (!source) {
+      return;
+    }
+
+    setImages((current) =>
+      current.map((image) => (image.id === imageId ? { ...image, status: 'converting' as const, error: undefined } : image))
+    );
+
+    try {
+      const flipped = await flipImage(source.data, source.format, horizontal, options.targetFormat, options.quality);
+      const blob = new Blob([flipped.data], { type: mimeFromFormat(flipped.format) });
+      const nextPreviewUrl = URL.createObjectURL(blob);
+      const metadata = await getImageMetadata(flipped.data, flipped.format).catch(() => source.metadata);
+
+      setImages((current) =>
+        current.map((image) => {
+          if (image.id !== imageId) {
+            return image;
+          }
+
+          URL.revokeObjectURL(image.previewUrl);
+          if (image.convertedUrl) {
+            URL.revokeObjectURL(image.convertedUrl);
+          }
+
+          return {
+            ...image,
+            data: flipped.data,
+            format: flipped.format,
+            previewUrl: nextPreviewUrl,
+            converted: flipped,
+            convertedUrl: nextPreviewUrl,
+            metadata,
+            status: 'done' as const,
+            error: undefined,
+          };
+        })
+      );
+    } catch (error) {
+      setImages((current) =>
+        current.map((image) =>
+          image.id === imageId
+            ? {
+                ...image,
+                status: 'error' as const,
+                error: error instanceof Error ? error.message : 'Failed to flip image',
+              }
+            : image
+        )
+      );
+    }
+  }, [images, options.quality, options.targetFormat]);
+
+  const downloadImage = useCallback((imageId: string) => {
+    const image = images.find((entry) => entry.id === imageId);
+    if (!image || !image.convertedUrl || !image.converted) {
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.href = image.convertedUrl;
+    link.download = `${image.name.replace(/\.[^.]+$/, '')}.${extensionFromFormat(image.converted.format)}`;
+    link.click();
+  }, [images]);
 
   const clearAll = useCallback(() => {
     images.forEach((image) => URL.revokeObjectURL(image.previewUrl));
@@ -135,8 +296,20 @@ export function useImageProcessor() {
     convertSingle,
     convertAll,
     rotate,
+    flip,
+    downloadImage,
     clearAll,
   };
+}
+
+function mimeFromFormat(format: string): string {
+  if (format === 'jpeg' || format === 'jpg') return 'image/jpeg';
+  return `image/${format}`;
+}
+
+function extensionFromFormat(format: string): string {
+  if (format === 'jpeg') return 'jpg';
+  return format;
 }
 
 function formatBytes(bytes: number) {

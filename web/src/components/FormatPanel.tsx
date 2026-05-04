@@ -5,6 +5,7 @@ interface FormatPanelProps {
   options: ConversionOptions;
   onChange: (next: ConversionOptions) => void;
   onConvert: () => void;
+  onDownload?: () => void;
   image?: ImageFile;
 }
 
@@ -17,7 +18,7 @@ const formats = [
   ['tiff', 'TIFF'],
 ] as const;
 
-export default function FormatPanel({ options, onChange, onConvert, image }: FormatPanelProps) {
+export default function FormatPanel({ options, onChange, onConvert, onDownload, image }: FormatPanelProps) {
   return (
     <div className="panel">
       <p className="panel-title">Convert</p>
@@ -47,6 +48,65 @@ export default function FormatPanel({ options, onChange, onConvert, image }: For
         />
       </div>
 
+      <div style={{ marginTop: 16 }}>
+        <label className="muted" htmlFor="resize-mode">Resize mode</label>
+        <select
+          id="resize-mode"
+          style={{ width: '100%', marginTop: 8 }}
+          value={options.resizeMode}
+          onChange={(event) =>
+            onChange({
+              ...options,
+              resizeMode: event.currentTarget.value as ConversionOptions['resizeMode'],
+            })
+          }
+        >
+          <option value="none">No resize</option>
+          <option value="dimensions">Dimensions</option>
+          <option value="percentage">Scale percentage</option>
+        </select>
+      </div>
+
+      {options.resizeMode === 'dimensions' ? (
+        <div className="segment-grid" style={{ marginTop: 12 }}>
+          <label>
+            <span className="muted">Width</span>
+            <input
+              type="number"
+              min={1}
+              value={options.targetWidth}
+              onChange={(event) => onChange({ ...options, targetWidth: Number(event.currentTarget.value) || 1 })}
+              style={{ width: '100%', marginTop: 6 }}
+            />
+          </label>
+          <label>
+            <span className="muted">Height</span>
+            <input
+              type="number"
+              min={1}
+              value={options.targetHeight}
+              onChange={(event) => onChange({ ...options, targetHeight: Number(event.currentTarget.value) || 1 })}
+              style={{ width: '100%', marginTop: 6 }}
+            />
+          </label>
+        </div>
+      ) : null}
+
+      {options.resizeMode === 'percentage' ? (
+        <div style={{ marginTop: 12 }}>
+          <label className="muted" htmlFor="scale-percent">Scale: {options.scalePercent}%</label>
+          <input
+            id="scale-percent"
+            style={{ width: '100%', marginTop: 8 }}
+            type="range"
+            min={10}
+            max={400}
+            value={options.scalePercent}
+            onChange={(event) => onChange({ ...options, scalePercent: Number(event.currentTarget.value) })}
+          />
+        </div>
+      ) : null}
+
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
         <input
           type="checkbox"
@@ -61,7 +121,7 @@ export default function FormatPanel({ options, onChange, onConvert, image }: For
         Convert active file
       </button>
 
-      <button className="download-button" type="button" disabled={!image?.convertedUrl} style={{ width: '100%', marginTop: 10 }}>
+      <button className="download-button" type="button" disabled={!image?.convertedUrl} onClick={onDownload} style={{ width: '100%', marginTop: 10 }}>
         <Download size={16} style={{ verticalAlign: 'text-bottom', marginRight: 6 }} />
         Download output
       </button>
