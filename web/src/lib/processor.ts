@@ -41,6 +41,12 @@ interface ImageSource {
 let wasmModule: any = null;
 let wasmInitPromise: Promise<void> | null = null;
 
+function toArrayBuffer(data: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(data.length);
+  copy.set(data);
+  return copy.buffer;
+}
+
 function bytesToSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1_048_576) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -48,12 +54,12 @@ function bytesToSize(bytes: number): string {
 }
 
 async function loadImageBitmapFromBytes(data: Uint8Array, type: string): Promise<ImageBitmap> {
-  return createImageBitmap(new Blob([data], { type }));
+  return createImageBitmap(new Blob([toArrayBuffer(data)], { type }));
 }
 
 async function decodeSource(imageData: Uint8Array, sourceFormat: string): Promise<ImageSource> {
   if (sourceFormat === 'heic' || sourceFormat === 'heif' || sourceFormat === 'avif') {
-    const decoded = await decodeHeif(imageData.buffer);
+    const decoded = await decodeHeif(toArrayBuffer(imageData));
     const canvas = document.createElement('canvas');
     canvas.width = decoded.width;
     canvas.height = decoded.height;
@@ -204,7 +210,7 @@ export async function loadImageFile(file: File): Promise<{ data: Uint8Array; for
 
 export async function getImageMetadata(imageData: Uint8Array, format: string): Promise<ImageMetadata> {
   if (format === 'heic' || format === 'heif' || format === 'avif') {
-    const decoded = await decodeHeif(imageData.buffer);
+    const decoded = await decodeHeif(toArrayBuffer(imageData));
     return {
       format,
       width: decoded.width,
