@@ -32,6 +32,17 @@ export interface ImageMetadata {
   estimated_memory_mb: number;
 }
 
+export interface ExifData {
+  make?: string;
+  model?: string;
+  dateTime?: string;
+  exposureTime?: string;
+  fNumber?: string;
+  iso?: string;
+  focalLength?: string;
+  gps?: { latitude: number; longitude: number };
+}
+
 interface ImageSource {
   bitmap: ImageBitmap;
   width: number;
@@ -48,6 +59,86 @@ function toArrayBuffer(data: Uint8Array): ArrayBuffer {
 }
 
 function bytesToSize(bytes: number): string {
+
+  function extractExifFromJpeg(data: Uint8Array): ExifData | null {
+    try {
+      // Look for EXIF marker (0xFFE1)
+      let pos = 2; // Skip SOI marker
+      while (pos < data.length - 8) {
+        if (data[pos] !== 0xff) {
+          pos++;
+          continue;
+        }
+
+        const marker = data[pos + 1];
+        const length = (data[pos + 2] << 8) | data[pos + 3];
+
+        if (marker === 0xe1 && length > 8) {
+          const exifHeader = String.fromCharCode(
+            data[pos + 4],
+            data[pos + 5],
+            data[pos + 6],
+            data[pos + 7],
+            data[pos + 8],
+            data[pos + 9]
+          );
+
+          if (exifHeader === 'Exif\0\0') {
+            const exifStart = pos + 10;
+            const exifData = data.slice(exifStart, exifStart + length - 8);
+            return parseExifTags(exifData);
+          }
+        }
+
+        pos += length + 2;
+      }
+    } catch {
+      // silently fail on parsing errors
+    }
+    return null;
+  }
+
+  function parseExifTags(data: Uint8Array): ExifData {
+    const result: ExifData = {};
+
+    try {
+      // Simple tag extraction from EXIF IFD
+      // Tag 0x010F = Make
+      // Tag 0x0110 = Model
+      // Tag 0x0132 = DateTime
+      // Tag 0x829A = ExposureTime
+      // Tag 0x829D = FNumber
+      // Tag 0x8827 = ISO
+      // Tag 0x920A = FocalLength
+
+      const textDecoder = new TextDecoder('utf-8');
+
+      // Minimal parsing: scan for common ASCII tags
+      for (let i = 0; i < data.length - 8; i++) {
+        // Look for ASCII strings after tag markers
+        if (
+          i + 4 < data.length &&
+          data[i] >= 32 &&
+          data[i] <= 126 &&
+          data[i + 1] >= 32 &&
+          data[i + 1] <= 126
+        ) {
+          const str = textDecoder.decode(data.slice(i, Math.min(i + 32, data.length)));
+          const cleaned = str.split('\0')[0].trim();
+
+          if (cleaned.match(/^[A-Z][a-z]+/)) {
+            if (!result.make && cleaned.length < 20) result.make = cleaned;
+            else if (!result.model && cleaned.length < 30 && result.make)
+              result.model = cleaned;
+          }
+        }
+      }
+    } catch {
+      // silently fail
+    }
+
+    return result;
+  }
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1_048_576) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1_048_576).toFixed(2)} MB`;
@@ -190,6 +281,14 @@ export async function initWasm(): Promise<void> {
   await wasmInitPromise;
 }
 
+export function hasWasm(): boolean {
+  return wasmModule !== null;
+    })();
+  }
+
+  await wasmInitPromise;
+}
+
 declare global {
   interface Window {
     createPixelforgeModule?: (config?: Record<string, unknown>) => Promise<any>;
@@ -227,7 +326,7 @@ export async function getImageMetadata(imageData: Uint8Array, format: string): P
 
   const bitmap = await loadImageBitmapFromBytes(imageData, `image/${format}`);
   const hasAlpha = ['png', 'webp', 'gif', 'avif'].includes(format);
-  return {
+  const metadata: ImageMetadata = {
     format,
     width: bitmap.width,
     height: bitmap.height,
@@ -239,6 +338,8 @@ export async function getImageMetadata(imageData: Uint8Array, format: string): P
     is_animated: format === 'gif',
     estimated_memory_mb: Number(((bitmap.width * bitmap.height * 4) / (1024 * 1024)).toFixed(2)),
   };
+
+  return metadata;
 }
 
 export async function convertImage(
