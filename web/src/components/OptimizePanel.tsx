@@ -18,7 +18,7 @@ export default function OptimizePanel({ format, options, onChange }: OptimizePan
   return (
     <div className="panel">
       <p className="panel-title">
-        <Settings2 size={14} style={{ vertical Align: 'middle', marginRight: 6 }} />
+        <Settings2 size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
         Optimize
       </p>
 

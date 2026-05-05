@@ -3,6 +3,7 @@ import Header from './components/Header';
 import FileDropzone from './components/FileDropzone';
 import ImageViewer from './components/ImageViewer';
 import FormatPanel from './components/FormatPanel';
+import OptimizePanel from './components/OptimizePanel';
 import MetadataPanel from './components/MetadataPanel';
 import BatchPanel from './components/BatchPanel';
 import { useImageProcessor } from './hooks/useImageProcessor';
@@ -104,6 +105,11 @@ export default function App() {
                 onConvert={() => activeImage && processor.convertSingle(activeImage.id)}
                 onDownload={() => activeImage && processor.downloadImage(activeImage.id)}
                 image={activeImage}
+              />
+              <OptimizePanel
+                format={processor.options.targetFormat}
+                options={processor.options}
+                onChange={processor.setOptions}
               />
               {activeImage?.metadata ? <MetadataPanel metadata={activeImage.metadata} /> : null}
             </aside>

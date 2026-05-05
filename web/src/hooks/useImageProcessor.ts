@@ -38,6 +38,8 @@ export function useImageProcessor() {
     targetWidth: 1920,
     targetHeight: 1080,
     scalePercent: 100,
+    progressiveJpeg: false,
+    chromaSubsampling: '4:2:0',
   });
 
   const addFiles = useCallback(async (files: FileList | File[]) => {
