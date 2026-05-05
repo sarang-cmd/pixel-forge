@@ -283,10 +283,6 @@ export async function initWasm(): Promise<void> {
 
 export function hasWasm(): boolean {
   return wasmModule !== null;
-    })();
-  }
-
-  await wasmInitPromise;
 }
 
 declare global {
